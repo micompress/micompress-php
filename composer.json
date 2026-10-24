@@ -1,0 +1,33 @@
+{
+    "name": "micompress/micompress",
+    "description": "Compress images, PDFs, video, audio, documents & archives from PHP — powered by micompress.com",
+    "type": "library",
+    "keywords": ["compress", "compression", "image", "pdf", "video", "audio", "optimize", "minify", "jpeg", "png", "micompress"],
+    "homepage": "https://micompress.com",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "MiCompress",
+            "homepage": "https://micompress.com"
+        }
+    ],
+    "support": {
+        "issues": "https://github.com/micompress/micompress-php/issues",
+        "source": "https://github.com/micompress/micompress-php",
+        "docs": "https://github.com/micompress/micompress-php#readme"
+    },
+    "require": {
+        "php": ">=7.4",
+        "ext-curl": "*",
+        "ext-json": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "MiCompress\\": "src/"
+        }
+    },
+    "bin": ["bin/micompress"],
+    "scripts": {
+        "test": "php tests/smoke.php"
+    }
+}

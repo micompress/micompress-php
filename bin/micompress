@@ -1,0 +1,55 @@
+#!/usr/bin/env php
+<?php
+// Usage: micompress <file>... [--preset=lossless|recommended|extreme] [--out=DIR] [--token=JWT]
+
+foreach ([__DIR__ . '/../vendor/autoload.php', __DIR__ . '/../../../autoload.php'] as $autoload) {
+    if (is_file($autoload)) {
+        require $autoload;
+        break;
+    }
+}
+if (!class_exists('MiCompress\\Client')) {
+    spl_autoload_register(function ($class) {
+        $file = __DIR__ . '/../src/' . str_replace('MiCompress\\', '', $class) . '.php';
+        if (is_file($file)) {
+            require $file;
+        }
+    });
+}
+
+$files = [];
+$opts = ['preset' => 'recommended', 'out' => null, 'token' => getenv('MICOMPRESS_TOKEN') ?: null];
+foreach (array_slice($argv, 1) as $arg) {
+    if ($arg === '-h' || $arg === '--help') {
+        fwrite(STDOUT, "Usage: micompress <file>... [--preset=lossless|recommended|extreme] [--out=DIR] [--token=JWT]\n"
+            . "Compress images, PDFs, video, audio, documents & archives via https://micompress.com\n");
+        exit(0);
+    }
+    if (preg_match('/^--(preset|out|token)=(.*)$/', $arg, $m)) {
+        $opts[$m[1]] = $m[2];
+    } else {
+        $files[] = $arg;
+    }
+}
+if (!$files) {
+    fwrite(STDERR, "micompress: no input files (try --help)\n");
+    exit(2);
+}
+
+$client = new MiCompress\Client(['token' => $opts['token']]);
+$failed = 0;
+foreach ($files as $file) {
+    $output = null;
+    if ($opts['out'] !== null) {
+        @mkdir($opts['out'], 0777, true);
+        $output = rtrim($opts['out'], '/') . '/' . basename($file);
+    }
+    try {
+        $r = $client->compressFile($file, $output, ['preset' => $opts['preset']]);
+        printf("%s -> %s (%d%% smaller)\n", $file, $r['output'], $r['savedPercent']);
+    } catch (MiCompress\CompressException $e) {
+        $failed++;
+        fwrite(STDERR, sprintf("%s: %s\n", $file, $e->getMessage()));
+    }
+}
+exit($failed ? 1 : 0);
