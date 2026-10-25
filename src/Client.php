@@ -11,25 +11,32 @@ namespace MiCompress;
  */
 class Client
 {
-    public const VERSION = '0.1.0';
+    public const VERSION = '0.1.1';
     public const DEFAULT_BASE = 'https://micompress.com';
+    /** Where users get a personal API key, and where to upgrade when its quota runs out. */
+    public const ACCOUNT_URL = self::DEFAULT_BASE . '/account';
+    public const PLANS_URL = self::DEFAULT_BASE . '/plans';
 
     /** @var string */
     private $baseUrl;
     /** @var string|null */
     private $token;
+    /** @var string|null */
+    private $apiKey;
     /** @var int */
     private $timeout;
 
     /**
-     * @param array{baseUrl?: string, token?: string, timeout?: int} $options
-     *   token   JWT access token for higher size limits (optional)
+     * @param array{baseUrl?: string, apiKey?: string, token?: string, timeout?: int} $options
+     *   apiKey  personal API key ("mc_...") from micompress.com/account (optional)
+     *   token   legacy JWT login token (optional; prefer apiKey)
      *   timeout seconds per request (default 120)
      */
     public function __construct(array $options = [])
     {
         $this->baseUrl = rtrim($options['baseUrl'] ?? self::DEFAULT_BASE, '/');
         $this->token = $options['token'] ?? null;
+        $this->apiKey = $options['apiKey'] ?? null;
         $this->timeout = (int) ($options['timeout'] ?? 120);
     }
 
@@ -65,20 +72,35 @@ class Client
         }
 
         $url = $this->baseUrl . '/' . Categories::CATEGORY_PATH[$category] . '/compress';
-        [$status, $body] = $this->request($url, $fields, ['Accept: application/json']);
+        $headers = ['Accept: application/json'];
+        // The API key only authorises the upload; the download link needs no key.
+        if ($this->apiKey) {
+            $headers[] = 'X-API-Key: ' . $this->apiKey;
+        }
+        [$status, $body] = $this->request($url, $fields, $headers);
 
         $json = json_decode($body, true);
         if (!is_array($json)) {
             throw new CompressException(sprintf('Unexpected response (HTTP %d)', $status), 'BADRESPONSE');
         }
         if ($status >= 400 || empty($json['success'])) {
-            if ($status === 401 && ($json['code'] ?? '') === 'LOGIN_REQUIRED') {
+            $code = $json['code'] ?? 'API_ERROR';
+            if ($status === 401 && $code === 'LOGIN_REQUIRED') {
                 throw new CompressException(
-                    'File exceeds the anonymous size limit. Pass a token (log in at ' . $this->baseUrl . ').',
+                    'File exceeds the anonymous size limit. Pass an API key (apiKey option / --api-key; free key at ' . self::ACCOUNT_URL . ').',
                     'LOGIN_REQUIRED'
                 );
             }
-            throw new CompressException($json['error'] ?? ('HTTP ' . $status), $json['code'] ?? 'API_ERROR');
+            if ($code === 'INVALID_API_KEY') {
+                throw new CompressException(self::withHint($json['error'] ?? 'Invalid API key.', 'Check your key at', self::ACCOUNT_URL), $code);
+            }
+            if ($code === 'API_QUOTA_REACHED' || $code === 'USAGE_LIMIT_REACHED') {
+                throw new CompressException(
+                    self::withHint($json['error'] ?? 'Monthly compression quota reached.', 'Upgrade for a bigger monthly quota:', self::PLANS_URL),
+                    $code
+                );
+            }
+            throw new CompressException($json['error'] ?? ('HTTP ' . $status), $code);
         }
 
         [$dlStatus, $bytes] = $this->request($this->baseUrl . $json['downloadUrl']);
@@ -123,6 +145,12 @@ class Client
      * @param string[] $headers
      * @return array{0: int, 1: string}
      */
+    /** Append "<lead> <url>" unless the server's message already names the URL. */
+    private static function withHint(string $message, string $lead, string $url): string
+    {
+        return strpos($message, preg_replace('#^https?://#', '', $url)) !== false ? $message : "$message $lead $url";
+    }
+
     private function request(string $url, ?array $postFields = null, array $headers = []): array
     {
         $headers[] = 'X-MiCompress-Client: packagist/' . self::VERSION;

@@ -1,6 +1,6 @@
 #!/usr/bin/env php
 <?php
-// Usage: micompress <file>... [--preset=lossless|recommended|extreme] [--out=DIR] [--token=JWT]
+// Usage: micompress <file>... [--preset=lossless|recommended|extreme] [--out=DIR] [--api-key=KEY] [--token=JWT]
 
 foreach ([__DIR__ . '/../vendor/autoload.php', __DIR__ . '/../../../autoload.php'] as $autoload) {
     if (is_file($autoload)) {
@@ -18,14 +18,21 @@ if (!class_exists('MiCompress\\Client')) {
 }
 
 $files = [];
-$opts = ['preset' => 'recommended', 'out' => null, 'token' => getenv('MICOMPRESS_TOKEN') ?: null];
+$opts = [
+    'preset' => 'recommended',
+    'out' => null,
+    'api-key' => getenv('MICOMPRESS_API_KEY') ?: null, // --api-key overrides the env var
+    'token' => getenv('MICOMPRESS_TOKEN') ?: null,
+];
 foreach (array_slice($argv, 1) as $arg) {
     if ($arg === '-h' || $arg === '--help') {
-        fwrite(STDOUT, "Usage: micompress <file>... [--preset=lossless|recommended|extreme] [--out=DIR] [--token=JWT]\n"
-            . "Compress images, PDFs, video, audio, documents & archives via https://micompress.com\n");
+        fwrite(STDOUT, "Usage: micompress <file>... [--preset=lossless|recommended|extreme] [--out=DIR] [--api-key=KEY] [--token=JWT]\n"
+            . "Compress images, PDFs, video, audio, documents & archives via https://micompress.com\n\n"
+            . "  --api-key=KEY  Personal API key from micompress.com/account (default: \$MICOMPRESS_API_KEY)\n"
+            . "  --token=JWT    Legacy login token; prefer --api-key (default: \$MICOMPRESS_TOKEN)\n");
         exit(0);
     }
-    if (preg_match('/^--(preset|out|token)=(.*)$/', $arg, $m)) {
+    if (preg_match('/^--(preset|out|api-key|token)=(.*)$/', $arg, $m)) {
         $opts[$m[1]] = $m[2];
     } else {
         $files[] = $arg;
@@ -36,7 +43,8 @@ if (!$files) {
     exit(2);
 }
 
-$client = new MiCompress\Client(['token' => $opts['token']]);
+$apiKey = trim((string) $opts['api-key']);
+$client = new MiCompress\Client(['apiKey' => $apiKey !== '' ? $apiKey : null, 'token' => $opts['token']]);
 $failed = 0;
 foreach ($files as $file) {
     $output = null;
